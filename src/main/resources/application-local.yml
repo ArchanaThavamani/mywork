@@ -1,0 +1,61 @@
+spring:
+  jpa:
+    open-in-view : false
+    hibernate:
+      ddl-auto: none
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    properties:
+      dialect: org.hibernate.dialect.PostgreSQL81Dialect
+    show-sql: false
+  main:
+    allow-bean-definition-overriding: true
+ 
+ 
+  mail:
+    host: email-smtp.us-east-1.amazonaws.com
+    port: 587
+    username: AKIAVWU6DFCZ5APUHA6N
+    password: BJ+nrI/YcuWzv32LBZ3d8FukeUby3cNNDFs9VAua14kj
+ 
+mail:
+  host: email-smtp.us-east-1.amazonaws.com
+  port: 587
+  properties:
+    mail:
+      transport:
+        protocol: smtp
+      smtp:
+        port: 587
+        auth: true
+        starttls:
+          enble: true
+          required: true
+ 
+ 
+cloud:
+  aws:
+    secretName: racetrac-local
+    region:
+      static: us-east-1
+    endpoint:
+      hog-local-endpoint : arn:aws:secretsmanager:us-east-1:174285615875:secret:racetrac-local-Savlib
+    credentials:
+      access_key: AKIASRFB3OMBS55PPTNF
+      secret_key: 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 
+ 
+commonconfig:
+  period: 1500
+  max_period: 6000
+  max_attempts: 2
+  timeout_period: 20000
+ 
+ 
+server:
+  port: 8080
+  servlet:
+    context-path: /racetrac
+
+workday:
+  base-url: https://wd5-impl-services1.workday.com
+  tenant: racetrac9

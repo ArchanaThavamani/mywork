@@ -1,0 +1,347 @@
+package com.arizon.racetrac.services;
+
+import com.arizon.ordercommons.configs.OCConstants;
+import com.arizon.ordercommons.entity.OCBCOrderProductTableTransaction;
+import com.arizon.ordercommons.entity.OCBCOrderTableTransaction;
+import com.arizon.ordercommons.entity.OCBCShippingAddressTransaction;
+import com.arizon.racetrac.entity.StoreWarehouseMapping;
+import com.arizon.racetrac.model.DateRange;
+import com.arizon.racetrac.model.LineItem;
+import com.arizon.racetrac.model.LineItemDetail;
+import com.arizon.racetrac.model.OrderLogisticalDateInformation;
+import com.arizon.racetrac.model.OrderLogisticalInformation;
+import com.arizon.racetrac.model.Party;
+import com.arizon.racetrac.model.Quantity;
+import com.arizon.racetrac.model.SalesOrder;
+import com.arizon.racetrac.model.TradeItemId;
+import com.arizon.racetrac.model.TransactionalTradeItem;
+import com.arizon.racetrac.repository.StoreWarehouseMappingRepository;
+import com.arizon.racetrac.util.RacetracConstants;
+import com.arizon.racetrac.util.RacetracUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Optional;
+
+import lombok.extern.slf4j.Slf4j;
+
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+
+@Slf4j
+@Service
+public class BlueyonderOrderService {
+	@Autowired
+	private StoreWarehouseMappingRepository storeWarehouseMappingRepository;
+
+	Party buyer;
+	
+    public String transformBCOrder(OCBCOrderTableTransaction bcOrder,List<OCBCOrderProductTableTransaction> bcOrderproducts, OCBCShippingAddressTransaction shippingAddressTransaction) {
+			String rtnstatus = null;
+			try {
+		  	    log.info("Transforming BigCommerce order id : "+ bcOrder.getSourceOrderId());
+				SalesOrder salesOrder = new SalesOrder();
+				setSalesOrderHeader(salesOrder, bcOrder , shippingAddressTransaction);
+				setSalesOrderItem(salesOrder, bcOrder, bcOrderproducts);
+				ObjectMapper objectMapper = new ObjectMapper();
+				String salesOrderJson = objectMapper.writeValueAsString(salesOrder);
+				log.info("Sales Order JSON: " + salesOrderJson);
+				return salesOrderJson;
+			} catch (Exception e) {
+				log.error("Error transforming BigCommerce order id : "+ bcOrder.getSourceOrderId()+ RacetracUtil.getStackTrace(e));
+				return  OCConstants.failed;	
+			}
+			
+		}
+
+		
+		private void setSalesOrderHeader(SalesOrder salesOrder, OCBCOrderTableTransaction bcOrder,
+			OCBCShippingAddressTransaction shippingAddressTransaction) {
+			log.info("Setting Sales Order Header for order id : " + bcOrder.getSourceOrderId());
+		
+				salesOrder.setOrderSubType(RacetracConstants.orderSubType);
+				log.info("Order SubType :"+ salesOrder.getOrderSubType());
+
+				//warehouse mapping
+				Optional<StoreWarehouseMapping> mappingOpt = storeWarehouseMappingRepository.findByStoreId(Integer.parseInt(bcOrder.getBillingLastname()));
+    				if (mappingOpt.isPresent()) {
+						Integer warehouseId = mappingOpt.get().getWarehouseId(); 					
+						log.info("Ware House ID :"+warehouseId);
+    		    		// Ensure OrderLogisticalInformation is not null
+            			if (salesOrder.getOrderLogisticalInformation() == null) {
+        					salesOrder.setOrderLogisticalInformation(new OrderLogisticalInformation());
+    					}
+
+						// Ensure ShipFrom is not null
+						if (salesOrder.getOrderLogisticalInformation().getShipFrom() == null) {
+							salesOrder.getOrderLogisticalInformation().setShipFrom(new Party());
+						}
+
+						// Now safe to set PrimaryId
+						salesOrder.getOrderLogisticalInformation().getShipFrom().setPrimaryId(warehouseId.toString());
+						log.info("Warehouse Setting : "+ salesOrder.getOrderLogisticalInformation().getShipFrom().getPrimaryId());				
+					}
+
+				// Date logic 
+				// Ensure OrderLogisticalInformation exists
+				if (salesOrder.getOrderLogisticalInformation() == null) {
+					salesOrder.setOrderLogisticalInformation(new OrderLogisticalInformation());
+				}
+
+				// Ensure OrderLogisticalDateInformation exists
+				if (salesOrder.getOrderLogisticalInformation().getOrderLogisticalDateInformation() == null) {
+					salesOrder.getOrderLogisticalInformation().setOrderLogisticalDateInformation(new OrderLogisticalDateInformation());
+				}
+			
+				// Ensure RequestedDeliveryDateRange exists
+				if (salesOrder.getOrderLogisticalInformation()
+							.getOrderLogisticalDateInformation()
+							.getRequestedDeliveryDateRange() == null) {
+					salesOrder.getOrderLogisticalInformation()
+							.getOrderLogisticalDateInformation()
+							.setRequestedDeliveryDateRange(new DateRange());
+				}
+			
+				// Now safe to set times
+				salesOrder.getOrderLogisticalInformation()
+						.getOrderLogisticalDateInformation()
+						.getRequestedDeliveryDateRange()
+						.setBeginTime(RacetracConstants.beginTime);
+			
+				salesOrder.getOrderLogisticalInformation()
+						.getOrderLogisticalDateInformation()
+						.getRequestedDeliveryDateRange()
+						.setEndTime(RacetracConstants.endTime);
+				
+			    log.info("Begin Time : "+ salesOrder.getOrderLogisticalInformation()
+						.getOrderLogisticalDateInformation()
+						.getRequestedDeliveryDateRange()
+						.getBeginTime());
+			    log.info("End Time : "+ salesOrder.getOrderLogisticalInformation()
+						.getOrderLogisticalDateInformation()
+						.getRequestedDeliveryDateRange()
+						.getEndTime());			
+						
+						
+				//Ship To - Store Id Mapping
+				if (salesOrder.getOrderLogisticalInformation() == null) {
+					salesOrder.setOrderLogisticalInformation(new OrderLogisticalInformation());
+				}
+		
+				if (salesOrder.getOrderLogisticalInformation().getShipTo() == null) {
+					salesOrder.getOrderLogisticalInformation().setShipTo(new Party());
+				}
+		
+				salesOrder.getOrderLogisticalInformation().getShipTo().setPrimaryId(bcOrder.getBillingLastname());
+				log.info("Store ID: "+salesOrder.getOrderLogisticalInformation().getShipTo().getPrimaryId());
+
+
+				//Order ID Mapping
+				salesOrder.setOrderId("SW"+bcOrder.getSourceOrderId().toString());
+				log.info("Order ID :"+salesOrder.getOrderId());
+
+				//Documentation Status Code
+				salesOrder.setDocumentStatusCode(RacetracConstants.documentStatusCode);
+				log.info("Document Status Code: "+salesOrder.getDocumentStatusCode());
+
+				//Entity Id Mapping
+				salesOrder.setEntityId("SW"+bcOrder.getSourceOrderId().toString());
+				log.info("Entity ID: "+salesOrder.getEntityId());
+
+				//Documetation Action Code Mapping
+				salesOrder.setDocumentActionCode(RacetracConstants.documentActionCode);
+				log.info("Documentation Action code "+salesOrder.getDocumentActionCode());
+
+				//Buyer - primary id (Store ID) Mapping
+				if (salesOrder.getBuyer() == null) {
+					salesOrder.setBuyer(new Party());
+				}
+				salesOrder.getBuyer().setPrimaryId(bcOrder.getBillingLastname());
+				log.info("Buyer Primary Id - Store ID :"+salesOrder.getBuyer().getPrimaryId());
+
+
+				//tmCustomerCode Mapping
+				salesOrder.setTmCustomerCode(RacetracConstants.tmCustomerCode);
+				log.info("tmCustomerCode : "+salesOrder.getTmCustomerCode());		
+
+	    }
+
+			private void setSalesOrderItem(SalesOrder salesOrder, OCBCOrderTableTransaction bcOrder,
+					List<OCBCOrderProductTableTransaction> bcOrderproducts) {
+
+				log.info("Setting Sales Order Items for order id : " + bcOrder.getSourceOrderId());
+
+				// Ensure lineItem list exists
+				if (salesOrder.getLineItem() == null) {
+					salesOrder.setLineItem(new ArrayList<>());
+				}
+
+				List<LineItem> lineItems = new ArrayList<>();
+
+				int lineNumber = 10; // Start with 10 and increment by 10
+				for (OCBCOrderProductTableTransaction bcOrderProduct : bcOrderproducts) {
+
+					LineItem lineItem = new LineItem();
+
+					// Static mappings
+					lineItem.setOrderLinePriority(RacetracConstants.orderLinePriority);
+					log.info("OrderLinePriority " + RacetracConstants.orderLinePriority);
+
+					lineItem.setIsSaturdayDeliveryAllowed(RacetracConstants.isSaturdayDeliveryAllowed);
+					log.info("isSaturdayDeliveryAllowed " + RacetracConstants.isSaturdayDeliveryAllowed);
+
+					lineItem.setShipmentSplitMethod(RacetracConstants.shipmentSplitMethod);
+					log.info("shipmentSplitMethod " + RacetracConstants.shipmentSplitMethod);
+
+					lineItem.setIsCaseSplittingAllowed(RacetracConstants.isCaseSplittingAllowed);
+					log.info("CaseSplitMethod " + RacetracConstants.isCaseSplittingAllowed);
+
+					lineItem.setLineItemNumber(lineNumber);
+					log.info("Line Number " + lineNumber);
+					lineNumber += 10; // increment by 10
+
+					// Requested Quantity 
+					if (lineItem.getRequestedQuantity() == null) {
+						lineItem.setRequestedQuantity(new Quantity());
+					}
+					lineItem.getRequestedQuantity().setValue(bcOrderProduct.getQuantity());
+					log.info("Requested Quantity " + lineItem.getRequestedQuantity().getValue());
+
+					// TransactionalTradeItem mapping
+					if (lineItem.getTransactionalTradeItem() == null) {
+						lineItem.setTransactionalTradeItem(new TransactionalTradeItem());
+					}
+
+					// lineItem.getTransactionalTradeItem().setPrimaryId(bcOrderProduct.getSku());
+					lineItem.getTransactionalTradeItem().setPrimaryId("11013");
+					log.info("SKU mapped " + bcOrderProduct.getSku());
+
+					// AdditionalTradeItemId list
+					TradeItemId addTradeId = new TradeItemId();
+					addTradeId.setValue(RacetracConstants.value);
+					addTradeId.setTypeCode(RacetracConstants.typeCode);
+
+					List<TradeItemId> addTradeList = new ArrayList<>();
+					addTradeList.add(addTradeId);
+					lineItem.getTransactionalTradeItem().setAdditionalTradeItemId(addTradeList);
+
+					// LineItemDetail
+					if (lineItem.getLineItemDetail() == null) {
+						lineItem.setLineItemDetail(new ArrayList<>());
+					}
+
+					LineItemDetail detail = new LineItemDetail();
+
+					// Requested Quantity inside LineItemDetail
+					if (detail.getRequestedQuantity() == null) {
+						detail.setRequestedQuantity(new Quantity());
+					}
+					detail.getRequestedQuantity().setValue(bcOrderProduct.getQuantity());
+
+					// Order Logistical Information
+					if (detail.getOrderLogisticalInformation() == null) {
+						detail.setOrderLogisticalInformation(new OrderLogisticalInformation());
+					}
+
+					// Order Logistical Date Information
+					if (detail.getOrderLogisticalInformation().getOrderLogisticalDateInformation() == null) {
+						detail.getOrderLogisticalInformation().setOrderLogisticalDateInformation(new OrderLogisticalDateInformation());
+					}
+
+					// Requested Delivery Date Time Range
+					if (detail.getOrderLogisticalInformation()
+							.getOrderLogisticalDateInformation()
+							.getRequestedDeliveryDateRange() == null) {
+						detail.getOrderLogisticalInformation()
+							.getOrderLogisticalDateInformation()
+							.setRequestedDeliveryDateRange(new DateRange());
+					}
+					detail.getOrderLogisticalInformation()
+							.getOrderLogisticalDateInformation()
+							.getRequestedDeliveryDateRange()
+							.setBeginTime(RacetracConstants.beginTime);
+					detail.getOrderLogisticalInformation()
+							.getOrderLogisticalDateInformation()
+							.getRequestedDeliveryDateRange()
+							.setEndTime(RacetracConstants.endTime);
+
+					// Requested Ship Date Time Range
+					if (detail.getOrderLogisticalInformation()
+							.getOrderLogisticalDateInformation()
+							.getRequestedShipDateRange() == null) {
+						detail.getOrderLogisticalInformation()
+							.getOrderLogisticalDateInformation()
+							.setRequestedShipDateRange(new DateRange());
+}
+					detail.getOrderLogisticalInformation()
+							.getOrderLogisticalDateInformation()
+							.getRequestedShipDateRange()
+							.setBeginTime(RacetracConstants.beginTime);
+					detail.getOrderLogisticalInformation()
+							.getOrderLogisticalDateInformation()
+							.getRequestedShipDateRange()
+							.setEndTime(RacetracConstants.endTime);
+
+					// Add the detail to lineItem
+					lineItem.getLineItemDetail().add(detail);
+
+					// Add to list
+					lineItems.add(lineItem);
+
+					// --- DATE LOGIC ---
+					if (bcOrder.getOrderCreatedDate() != null && !bcOrder.getOrderCreatedDate().isEmpty()) {
+						LocalDate orderCreatedDate = null;
+
+						try {
+							// Parse the string date (adjust format if needed)
+							orderCreatedDate = LocalDate.parse(bcOrder.getOrderCreatedDate().substring(0, 10));
+
+							LocalDate deliveryDate = calculateDeliveryDate(orderCreatedDate);
+
+							salesOrder.getOrderLogisticalInformation()
+									.getOrderLogisticalDateInformation()
+									.getRequestedDeliveryDateRange()
+									.setBeginDate(deliveryDate.toString());
+
+							salesOrder.getOrderLogisticalInformation()
+									.getOrderLogisticalDateInformation()
+									.getRequestedDeliveryDateRange()
+									.setEndDate(deliveryDate.toString());
+
+							log.info("Order Created Date : {}", orderCreatedDate);
+							log.info("Calculated Delivery Date : {}", deliveryDate);
+
+						} catch (Exception e) {
+							log.error("Failed to parse order created date '{}': {}", bcOrder.getOrderCreatedDate(), e.getMessage());
+						}
+					} else {
+						log.warn("Order created date is null or empty, skipping delivery date mapping.");
+					}
+
+					log.info("LineItem Added -> SKU: " + bcOrderProduct.getSku() +
+							", LineNumber: " + lineItem.getLineItemNumber());
+				}
+
+				salesOrder.setLineItem(lineItems);
+				log.info("Total LineItems Mapped: " + lineItems.size());
+			}
+
+
+		
+		private LocalDate calculateDeliveryDate(LocalDate orderCreatedDate) {
+		// Start with next day
+		LocalDate deliveryDate = orderCreatedDate.plusDays(1);
+
+		// If it's Sunday, move to Monday
+		if (deliveryDate.getDayOfWeek() == DayOfWeek.SUNDAY) {
+			deliveryDate = deliveryDate.plusDays(1);
+		}
+		log.info("Delivery Date : "+deliveryDate);
+		return deliveryDate;
+		}
+
+}
