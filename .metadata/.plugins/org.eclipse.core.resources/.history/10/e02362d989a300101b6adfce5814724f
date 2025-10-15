@@ -1,0 +1,5 @@
+package com.arizon.racetrac.config;
+
+public class RacetracSalesOrderConstant {
+
+}

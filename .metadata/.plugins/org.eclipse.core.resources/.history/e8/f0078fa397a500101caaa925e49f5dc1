@@ -1,0 +1,54 @@
+package com.arizon.racetrac.controller;
+
+import java.io.IOException;
+
+import org.apache.commons.net.ftp.FTPSClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class RacetracShipmentController {
+	private static final Logger log = LoggerFactory.getLogger(RacetracShipmentController.class);
+	 
+    @GetMapping("/testFTPSConnection")
+    public void testFTPSConnection() {
+        String server = "sftp://sftp.racetrac.com";
+        int port = 22;
+        String user = "strtsftpprodeastus001.wdoutboundint.wdoutboundint";
+        String pass = "WH6tS6qy61hq+TK0gTi1KZwPy7L3Q4XI";
+ 
+        FTPSClient ftpClient = new FTPSClient(false);
+ 
+        try {
+            log.info("Attempting to connect to FTPS server: {}", server);
+ 
+            ftpClient.connect(server, port);
+            ftpClient.enterLocalPassiveMode();
+            ftpClient.login(user, pass);
+ 
+            // Enable secure data channel
+            ftpClient.execPBSZ(0);
+            ftpClient.execPROT("P");
+ 
+            if (ftpClient.isConnected()) {
+                log.info("Successfully connected and logged in to FTPS server: {}", server);
+            }
+ 
+        } catch (IOException e) {
+            log.error("Failed to connect or login to FTPS server: {}", e.getMessage(), e);
+        } finally {
+            try {
+                if (ftpClient.isConnected()) {
+                    ftpClient.logout();
+                    ftpClient.disconnect();
+                    log.info("🔌 Disconnected from FTPS server");
+                }
+            } catch (IOException ex) {
+                log.error("Error while disconnecting from FTPS server: {}", ex.getMessage(), ex);
+            }
+        }
+    }
+
+}

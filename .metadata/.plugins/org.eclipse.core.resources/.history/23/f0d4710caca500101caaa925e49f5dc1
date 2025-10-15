@@ -1,0 +1,142 @@
+package com.arizon.racetrac.services;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.Properties;
+import java.util.Vector;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import com.arizon.racetrac.controller.RacetracShipmentController;
+import com.jcraft.jsch.Channel;
+import com.jcraft.jsch.ChannelSftp;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.Session;
+import com.jcraft.jsch.SftpException;
+@Service
+public class RacetracShipmentService {
+    private static final Logger log = LoggerFactory.getLogger(RacetracShipmentService.class);
+    
+	 public void testShipmentRead() {
+	    	
+	        String host = "sftp.racetrac.com";
+	        int port = 22;
+	        String user = "strtsftpprodeastus001.wdoutboundint.wdoutboundint";
+	        String password = "WH6tS6qy61hq+TK0gTi1KZwPy7L3Q4XI";
+	 
+	        String remoteDir = "/SupplyChain/WDtoOmniPortal_Outbound/Inventory/";
+	 
+	        Session session = null;
+	        ChannelSftp channelSftp = null;
+	 
+	        try {
+	            JSch jsch = new JSch();
+	            session = jsch.getSession(user, host, port);
+	            session.setPassword(password);
+	 
+	            Properties config = new Properties();
+	            config.put("StrictHostKeyChecking", "no");
+	            session.setConfig(config);
+	 
+	            log.info("Connecting to SFTP server: {}", host);
+	            session.connect();
+	            log.info("Session connected.");
+	 
+	            channelSftp = (ChannelSftp) session.openChannel("sftp");
+	            channelSftp.connect();
+	            log.info("SFTP Channel connected successfully.");
+	 
+	            // Navigate to Shipment directory
+	            channelSftp.cd(remoteDir);
+	            log.info("Navigated to directory: {}", remoteDir);
+	 
+	            // List files
+	            Vector<ChannelSftp.LsEntry> files = channelSftp.ls("*.json"); // only JSON files
+	            if (files.isEmpty()) {
+	                log.info("No JSON files found in {}", remoteDir);
+	                return;
+	            }
+	 
+	            for (ChannelSftp.LsEntry entry : files) {
+	                String fileName = entry.getFilename();
+	                log.info("Reading Shipment file: {}", fileName);
+	 
+	                try (InputStream inputStream = channelSftp.get(fileName);
+	                     BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
+	 
+	                    StringBuilder jsonContent = new StringBuilder();
+	                    String line;
+	                    while ((line = reader.readLine()) != null) {
+	                        jsonContent.append(line).append("\n");
+	                    }
+	 
+	                    log.info("=== JSON File Content ===\n{}\n=========================", jsonContent);
+	                } catch (Exception e) {
+	                    log.error("Error reading file {}: {}", fileName, e.getMessage());
+	                }
+	            }
+	 
+	        } catch (Exception e) {
+	            log.error("Failed to connect/read from SFTP server: {}", e.getMessage(), e);
+	        } finally {
+	            if (channelSftp != null && channelSftp.isConnected()) {
+	                channelSftp.disconnect();
+	                log.info("SFTP Channel disconnected.");
+	            }
+	            if (session != null && session.isConnected()) {
+	                session.disconnect();
+	                log.info("SFTP Session disconnected.");
+	            }
+	        }
+	    }
+	 
+	 public void testSFTPConnection() {
+	        String host = "sftp.racetrac.com";
+	        int port = 22;
+	        String user = "strtsftpprodeastus001.wdoutboundint.wdoutboundint";
+	        String pass = "WH6tS6qy61hq+TK0gTi1KZwPy7L3Q4XI";
+
+	        Session session = null;
+	        Channel channel = null;
+
+	        try {
+	            JSch jsch = new JSch();
+	            session = jsch.getSession(user, host, port);
+	            session.setPassword(pass);
+
+	            // Disable host key checking for testing
+	            Properties config = new Properties();
+	            config.put("StrictHostKeyChecking", "no");
+	            session.setConfig(config);
+	            log.info("Connecting to SFTP server...");
+	            session.connect();
+	            log.info("✅ Connected to SFTP server!");
+
+	            channel = session.openChannel("sftp");
+	            channel.connect();
+
+	            ChannelSftp sftpChannel = (ChannelSftp) channel;
+
+	            // Example: List files in root directory
+	            sftpChannel.ls(".").forEach(entry -> log.info("Found file: {}", entry));
+
+	            // Always cleanup
+	            sftpChannel.exit();
+	            session.disconnect();
+	            log.info("🔌 Disconnected from SFTP server");
+	        } catch (JSchException | SftpException e) {
+	            log.error("❌ SFTP connection failed: {}", e.getMessage(), e);
+	        } finally {
+	            if (channel != null && channel.isConnected()) {
+	                channel.disconnect();
+	            }
+	            if (session != null && session.isConnected()) {
+	                session.disconnect();
+	            }
+	        }
+	}
+
+}

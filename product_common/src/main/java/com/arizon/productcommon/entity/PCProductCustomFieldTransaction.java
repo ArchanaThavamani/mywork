@@ -1,0 +1,56 @@
+/*
+ * To change this license header, choose License Headers in Project Properties.
+ * To change this template file, choose Tools | Templates
+ * and open the template in the editor.
+ */
+package com.arizon.productcommon.entity;
+
+import java.io.Serializable;
+import java.math.BigInteger;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+/**
+ *
+ * @author mohan.e
+ */
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(schema = "commonbc",name = "tbl_product_custom_fields")
+public class PCProductCustomFieldTransaction implements Serializable {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "product_custom_fields_id")
+    private Integer productCustomFieldsId;
+    @Column(name = "destination_product_custom_fields_id")
+    private Integer destinationProductCustomFieldsId;
+    @Column(name = "product_id")
+    private BigInteger productId;
+    @Column(name = "destination_product_id")
+    private BigInteger destinationProductId;
+    @Column(name = "name")
+    private String name;
+    @Column(name = "value")
+    private String value;
+    @Column(name = "status")
+    private String status;
+    @Column(name = "is_active")
+    private boolean isActive;
+    @Column(name = "is_deleted")
+    private boolean isDeleted;
+//@Column(name="created_date")
+//private String createdDate; 
+//@Column(name="modified_date")
+//private String modifiedDate; 
+	
+}

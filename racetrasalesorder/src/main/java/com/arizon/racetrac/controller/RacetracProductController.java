@@ -1,0 +1,64 @@
+package com.arizon.racetrac.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.arizon.productcommon.controller.PCBCProductsController;
+import com.arizon.racetrac.services.CategorySyncService;
+import com.arizon.racetrac.services.RacetracProductService;
+import com.arizon.racetrac.util.RacetracConstants;
+import com.fasterxml.jackson.core.JsonProcessingException;
+
+
+@RestController
+@RequestMapping("/products")
+public class RacetracProductController {
+
+    @Autowired
+    private RacetracProductService racetracProductService;
+
+    @Autowired
+    private PCBCProductsController pcBCProductsController;
+
+    @Autowired
+    private CategorySyncService categorySyncService;
+
+
+    @GetMapping("/integrateProductsFromWorkday")
+    public ResponseEntity<String> integrateProductsFromWorkday() {
+        try {
+            racetracProductService.syncProductsFromWorkdayToADIS();
+            pcBCProductsController.getProductsFromAdis("Pending");
+
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+        }
+        return ResponseEntity.ok(RacetracConstants.SUCCESS);
+    }
+
+    @GetMapping("/syncCategoriesFromBC")
+    public ResponseEntity<String> syncCategoriesFromBC() {
+        String result = categorySyncService.syncCategoriesFromBCToTable();
+        return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/workdayToAdis")
+    public ResponseEntity<String> integrateProductsFromWorkdayToADIS() {
+        try {
+            racetracProductService.syncProductsFromWorkdayToADIS();
+
+        } catch (JsonProcessingException e) {
+            e.printStackTrace();
+        }
+        return ResponseEntity.ok(RacetracConstants.SUCCESS);
+    }
+
+    @GetMapping("/adisToBC")
+    public ResponseEntity<String> integrateProductsFromADIStoBC() {
+        pcBCProductsController.getProductsFromAdis("Pending");
+        return ResponseEntity.ok(RacetracConstants.SUCCESS);
+    }    
+}

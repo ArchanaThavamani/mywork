@@ -1,0 +1,39 @@
+spring:
+  jpa:
+    open-in-view : false
+    hibernate:
+      ddl-auto: none
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    properties:
+      dialect: org.hibernate.dialect.PostgreSQL81Dialect
+    show-sql: true
+  datasource:
+     url: jdbc:postgresql://52.1.232.139:5432/mac_mod_dev?useSSL=false&requireSSL=false
+     username: macmodusr
+     password: M0diCakil7ler!)
+     
+           
+server:
+  port: 8080
+  
+  
+productcommon:
+  period: 1500
+  maxPeriod: 6000
+  maxAttempts: 2
+  baseUrl: https://api.bigcommerce.com/stores 
+  storeHash: t574j5glm3
+  accesstoken: p4dmgr86gtam4d3iuvlk9edvyxs5zle
+  prefix: local
+  
+cloud:
+  aws:
+    secretName: macmod-integration-local
+    region:
+      static: us-east-1
+    endpoint:
+      hog-local-endpoint : arn:aws:secretsmanager:us-east-1:174285615875:secret:macmod-integration-local-qchCyX
+    credentials:
+      access_key: AKIASRFB3OMBS55PPTNF
+      secret_key: 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

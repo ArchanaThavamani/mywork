@@ -1,0 +1,64 @@
+package com.arizon.racetrac.controller;
+
+import java.io.IOException;
+
+import org.apache.commons.net.ftp.FTPSClient;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+public class RacetracShipmentController {
+	private static final Logger log = LoggerFactory.getLogger(RacetracShipmentController.class);
+	 
+    @GetMapping("/testFTPSConnection")
+    public void testFTPSConnection() {
+    	 String host = "sftp.racetrac.com";
+         int port = 22;
+         String user = "strtsftpprodeastus001.wdoutboundint.wdoutboundint";
+         String pass = "WH6tS6qy61hq+TK0gTi1KZwPy7L3Q4XI";
+
+         Session session = null;
+         Channel channel = null;
+
+         try {
+             JSch jsch = new JSch();
+             session = jsch.getSession(user, host, port);
+             session.setPassword(pass);
+
+             // Disable host key checking for testing
+             Properties config = new Properties();
+             config.put("StrictHostKeyChecking", "no");
+             session.setConfig(config);
+
+             log.info("Connecting to SFTP server...");
+             session.connect();
+             log.info("✅ Connected to SFTP server!");
+
+             channel = session.openChannel("sftp");
+             channel.connect();
+
+             ChannelSftp sftpChannel = (ChannelSftp) channel;
+
+             // Example: List files in root directory
+             sftpChannel.ls(".").forEach(entry -> log.info("Found file: {}", entry));
+
+             // Always cleanup
+             sftpChannel.exit();
+             session.disconnect();
+             log.info("🔌 Disconnected from SFTP server");
+
+         } catch (JSchException | SftpException e) {
+             log.error("❌ SFTP connection failed: {}", e.getMessage(), e);
+         } finally {
+             if (channel != null && channel.isConnected()) {
+                 channel.disconnect();
+             }
+             if (session != null && session.isConnected()) {
+                 session.disconnect();
+             }
+         }
+     }
+    }
+}

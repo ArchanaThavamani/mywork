@@ -1,0 +1,33 @@
+package com.arizon.racetrac.controller;
+ 
+import com.arizon.racetrac.services.RacetracShipmentService;
+import com.jcraft.jsch.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+ 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.Properties;
+import java.util.Vector;
+ 
+@RestController
+public class RacetracShipmentController {
+	@Autowired
+	RacetracShipmentService  racetracShipmentService; 
+ 
+    private static final Logger log = LoggerFactory.getLogger(RacetracShipmentController.class);
+ 
+    @GetMapping("/testShipmentRead")
+    public void ShipmentRead() {
+    	racetracShipmentService.testShipmentRead();
+        
+    }
+    
+    
+    @GetMapping("/testFTPSConnection")
+    {// Can rename to /testSFTPConnection
+   }

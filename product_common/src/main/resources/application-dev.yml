@@ -1,0 +1,58 @@
+## YAML Template.
+---
+spring:
+  jpa:
+    open-in-view : false
+    hibernate:
+      ddl-auto: none
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    properties:
+      dialect: org.hibernate.dialect.PostgreSQL81Dialect
+    show-sql: true
+  main:
+      allow-bean-definition-overriding: true
+  
+     
+  mail:
+      host: email-smtp.us-east-1.amazonaws.com
+      port: 587
+      username: AKIAVWU6DFCZ5APUHA6N
+      password: BJ+nrI/YcuWzv32LBZ3d8FukeUby3cNNDFs9VAua14kj
+      
+mail:
+    host: email-smtp.us-east-1.amazonaws.com
+    port: 587
+    properties:
+      mail:
+        transport:
+          protocol: smtp
+        smtp:
+          port: 587
+          auth: true
+          starttls:
+            enble: true
+            required: true
+            
+            
+cloud:
+  aws:
+    secretName: macmod-integration-dev
+    region:
+      static: us-east-1
+    endpoint:
+      hog-local-endpoint : arn:aws:secretsmanager:us-east-1:174285615875:secret:macmod-integration-dev-WNlUUs
+    credentials:
+      access_key: 
+      secret_key: 
+      
+
+#    public static final String CUSTOMER_REPORT_SUB = "Connolly Sandbox Customer Integration on ";
+
+productcommon:
+  prefix: Dev
+    
+server:
+  port: 8282
+  servlet:
+    context-path: /MacMod

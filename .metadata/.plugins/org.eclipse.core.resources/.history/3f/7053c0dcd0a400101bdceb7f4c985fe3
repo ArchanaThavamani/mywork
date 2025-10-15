@@ -1,0 +1,71 @@
+package com.arizon.racetrac.services;
+
+import java.util.List;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+
+import com.arizon.ordercommons.configs.OCConstants;
+import com.arizon.ordercommons.entity.OCBCOrderProductTableTransaction;
+import com.arizon.ordercommons.entity.OCBCOrderTableTransaction;
+import com.arizon.ordercommons.entity.OCBCShippingAddressTransaction;
+import com.arizon.racetrac.config.RacetracSalesOrderConstant;
+import com.arizon.racetrac.model.LineItem;
+import com.arizon.racetrac.model.LineItemDetail;
+import com.arizon.racetrac.model.SalesOrder;
+import com.arizon.racetrac.util.RacetracUtil;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+@Service
+public class BigcommerceOrderTransform {
+	@Autowired
+	RacetracSalesOrderConstant racetracSalesOrderConstant;
+    private static final Logger log = LoggerFactory.getLogger(BigcommerceOrderTransform.class);
+
+	public String transformBCOrder(OCBCOrderTableTransaction bcOrder,
+			List<OCBCOrderProductTableTransaction> bcOrderproducts,
+			OCBCShippingAddressTransaction shippingAddressTransaction) {
+	
+		String rtnstatus = null;
+		try {
+	  	    log.info("Transforming BigCommerce order id : "+ bcOrder.getSourceOrderId());
+	  	   SalesOrder salesorder=new SalesOrder();
+	  	   salesorder.getOrderLogisticalInformation().setShipTo(null);
+	  	   setSalesOrderHeader(salesorder, bcOrder , shippingAddressTransaction);
+			setSalesOrderItem(salesorder, bcOrder, bcOrderproducts);
+			ObjectMapper objectMapper = new ObjectMapper();
+			String salesOrderJson = objectMapper.writeValueAsString(salesorder);
+			log.info("Sales Order JSON: " + salesOrderJson);
+			return salesOrderJson;
+		} catch (Exception e) {
+			log.error("Error transforming BigCommerce order id : "+ bcOrder.getSourceOrderId()+ RacetracUtil.getStackTrace(e));
+			return  OCConstants.failed;	
+		}
+	}
+	 public void setSalesOrderHeader(SalesOrder salesorder , OCBCOrderTableTransaction bcOrder, OCBCShippingAddressTransaction shippingAddressTransaction) {
+	    	log.info("Setting Sales Order Header for order id : " + bcOrder.getSourceOrderId());
+	    	salesorder.setOrderSubType(racetracSalesOrderConstant.getOrderSubType());
+	    	salesorder.
+	    	
+//	    	salesorder.setOrderId((bcOrder.getOrderId()).toString());
+//	    	log.info("racetrac order id : "+salesorder.getOrderId());
+//	    	salesorder.getBuyer().setPrimaryId(bcOrder.getBillingFirstname());
+//	    	salesorder.getOrderLogisticalInformation().getShipTo().setPrimaryId(bcOrder.getBillingFirstname());
+//	    	    	
+	    	}
+	 
+	    public void setSalesOrderItem(SalesOrder salesorder, OCBCOrderTableTransaction bcOrder, List<OCBCOrderProductTableTransaction> bcOrderproducts)
+	    {
+	    	List<LineItem> lineItems = salesorder.getLineItem();
+	    	for (LineItem item : lineItems) {
+//	    		item.getTransactionalTradeItem().setPrimaryId(bcOrderproducts.stream().map())
+	    }
+	    	
+	    	}
+	    
+	    
+
+}

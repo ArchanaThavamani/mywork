@@ -1,0 +1,331 @@
+package com.arizon.racetrac.services;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.Vector;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+
+import com.arizon.ordercommons.entity.OCBCOrderProductTableTransaction;
+import com.arizon.ordercommons.entity.OCBCOrderTableTransaction;
+import com.arizon.ordercommons.repository.OCBCOrderProductTransactionRepository;
+import com.arizon.ordercommons.repository.OCBCOrderTransactionRepository;
+import com.arizon.racetrac.restclient.ShipmentFeignClient;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jcraft.jsch.Channel;
+import com.jcraft.jsch.ChannelSftp;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.Session;
+import com.jcraft.jsch.SftpException;
+@Service
+public class RacetracShipmentService {
+	
+	private static final Logger log = LoggerFactory.getLogger(RacetracShipmentService.class);
+	 
+    @Autowired
+    private OCBCOrderTransactionRepository ocbcOrderTransactionRepository;
+ 
+    @Autowired
+    OCBCOrderProductTransactionRepository ocbcOrderProductTransactionRepository;
+ 
+    @Autowired
+    ShipmentFeignClient shipmentFeignClient;
+ 
+    // SFTP Credentials
+    private final String host = "sftp.racetrac.com";
+    private final int port = 22;
+    private final String user = "strtsftpprodeastus001.wdoutboundint.wdoutboundint";
+    private final String password = "WH6tS6qy61hq+TK0gTi1KZwPy7L3Q4XI";
+    private final String remoteDir = "/SupplyChain/WDtoOmniPortal_Outbound/Shipments/";
+ 
+    public void integrateShipmentsDetails() {
+        Session session = null;
+        ChannelSftp channelSftp = null;
+ 
+        try {
+            session = setupSftpSession();
+            channelSftp = (ChannelSftp) session.openChannel("sftp");
+            channelSftp.connect();
+            log.info("SFTP Channel connected successfully.");
+ 
+            channelSftp.cd(remoteDir);
+            Vector<ChannelSftp.LsEntry> files = channelSftp.ls("*.json");
+ 
+            if (files.isEmpty()) {
+                log.info("No JSON files found in {}", remoteDir);
+                return;
+            }
+ 
+            for (ChannelSftp.LsEntry entry : files) {
+                String fileName = entry.getFilename();
+                log.info("Processing file: {}", fileName);
+                String jsonContent = readFileFromSftp(channelSftp, fileName);
+ 
+                processShipmentJson(jsonContent);
+            }
+ 
+        } catch (Exception e) {
+            log.error("Error processing SFTP files: {}", e.getMessage(), e);
+        } finally {
+            disconnect(channelSftp, session);
+        }
+    }
+ 
+    // Server Connection
+ 
+    private Session setupSftpSession() throws Exception {
+        JSch jsch = new JSch();
+        Session session = jsch.getSession(user, host, port);
+        session.setPassword(password);
+        Properties config = new Properties();
+        config.put("StrictHostKeyChecking", "no");
+        session.setConfig(config);
+        log.info("Connecting to SFTP server: {}", host);
+        session.connect();
+        log.info("SFTP Session connected successfully.");
+        return session;
+    }
+ 
+    // Reading the file
+ 
+    private String readFileFromSftp(ChannelSftp channelSftp, String fileName) throws Exception {
+        try (InputStream inputStream = channelSftp.get(fileName);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
+ 
+            StringBuilder jsonContent = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                jsonContent.append(line);
+            }
+            return jsonContent.toString();
+        }
+    }
+ 
+    // Disconnecting the Server
+ 
+    private void disconnect(ChannelSftp channelSftp, Session session) {
+        if (channelSftp != null && channelSftp.isConnected()) {
+            channelSftp.disconnect();
+            log.info("SFTP Channel disconnected.");
+        }
+        if (session != null && session.isConnected()) {
+            session.disconnect();
+            log.info("SFTP Session disconnected.");
+        }
+    }
+ 
+    // Processing
+ 
+    private void processShipmentJson(String jsonContent) {
+ 
+        // Convert JSON content to object
+        JSONObject json = new JSONObject(jsonContent.toString());
+ 
+        // Step 1: Extract despatchAdvice object (only one entry expected)
+        JSONObject despatchAdvice = json.getJSONArray("despatchAdvice").getJSONObject(0);
+ 
+        // Step 2: Extract and validate order from database
+        String customerReference = despatchAdvice.getString("customerReference"); // e.g., STOCK-058540
+        int sourceOrderId = Integer.parseInt(customerReference.split("-")[1]);
+        String storehash = "cr0kczybyx";
+ 
+        log.info("Extracted source_order_id from JSON: ", sourceOrderId);
+ 
+        // Query the order
+        Optional<OCBCOrderTableTransaction> orderId =
+                ocbcOrderTransactionRepository.findByStorehashAndSourceOrderId(storehash, sourceOrderId);
+ 
+        if (orderId.isEmpty()) {
+            log.warn("Order not found in tbl_order table for storehash = "+storehash+"and source_order_id= "+ sourceOrderId);
+            return;
+        }
+       
+        OCBCOrderTableTransaction order = orderId.get();
+        int pkOrderId = order.getOrderId();
+        log.info("Order found for order_id "+order.getOrderId()+" source_order_id " +sourceOrderId);
+        // Fetch all products for this orderId from DB
+        List<OCBCOrderProductTableTransaction> orderProducts =
+                ocbcOrderProductTransactionRepository.findByorderId(pkOrderId);
+       
+        // Step 3: Validate shipment line items with quantity match
+        JSONObject shipment = despatchAdvice.getJSONObject("shipment");
+ 
+        if (shipment.has("lineItem")) {
+            JSONArray lineItems = shipment.getJSONArray("lineItem");
+ 
+            // Fetch all products for this orderId from DB
+//            List<OCBCOrderProductTableTransaction> orderProducts =
+//                    ocbcOrderProductTransactionRepository.findByorderId(pkOrderId);
+ 
+            if (orderProducts == null || orderProducts.isEmpty()) {
+                log.warn("No line items found in tbl_order_product for order_id ", pkOrderId);
+                return;
+            }
+ 
+            // Loop through each shipment line item
+            for (int j = 0; j < lineItems.length(); j++) {
+                JSONObject lineItem = lineItems.getJSONObject(j);
+ 
+                // Extract SKU (everything after ':')
+                String shipmentLineItemId = lineItem.getString("shipmentLineItemId");
+                String sku = shipmentLineItemId.contains(":")
+                        ? shipmentLineItemId.split(":")[1]
+                        : shipmentLineItemId;
+ 
+                // Extract requested quantity
+                int requestedQty = lineItem
+                        .getJSONObject("requestedQuantity")
+                        .getInt("value");
+ 
+                // Find matching product in DB
+                Optional<OCBCOrderProductTableTransaction> matchedProduct = orderProducts.stream()
+                        .filter(p -> p.getSku().equalsIgnoreCase(sku))
+                        .findFirst();
+ 
+                if (matchedProduct.isEmpty()) {
+                    log.error("SKU "+sku+" not found for order_id= "+ pkOrderId);
+                    return; // stop processing if any SKU not found
+                }
+ 
+                OCBCOrderProductTableTransaction product = matchedProduct.get();
+                int dbQty = product.getQuantity();
+ 
+                // Check quantity match
+                if (requestedQty != dbQty) {
+                    log.error("Quantity mismatch for SKU "+sku+" expected "+dbQty+" got "+requestedQty);
+                    return; // stop processing on mismatch
+                }
+ 
+                log.info("Validated line item: SKU "+sku+" Quantity "+requestedQty);
+            }
+ 
+            log.info("All line items validated successfully for order_id "+pkOrderId);
+           
+        }
+        // After all validation
+        postShipmentToBigCommerce(storehash, pkOrderId, orderProducts);        
+        //postShipmentToBigCommerce(storehash, sourceOrderId, orderProducts);
+    }
+ 
+//        private void postShipmentToBigCommerce(String storeHash, int orderId, List<OCBCOrderProductTableTransaction> orderProducts) {
+//            try {
+//                // Build items array
+//                List<Map<String, Object>> items = new ArrayList<>();
+//                for (OCBCOrderProductTableTransaction product : orderProducts) {
+//                    Map<String, Object> item = Map.of(
+//                        "order_product_id", product.getSku(),
+//                        "quantity", product.getQuantity()
+//                    );
+//                    items.add(item);
+//                }
+// 
+//                Map<String, Object> payload = Map.of(
+//                    "order_id", orderId,
+//                    "items", items,
+//                    "tracking_number", "TRACK-" + orderId, // optional
+//                    "shipping_provider", "Manual Entry",
+//                    "tracking_carrier", "custom",
+//                    "comments", "Shipment created via integration"
+//                );
+// 
+//                String accessToken = "8tu4fs23u4456nj2jrexvz02mu0nkq5";
+// 
+//                ResponseEntity<String> response = shipmentFeignClient.createShipment(storeHash, orderId, accessToken, payload);
+// 
+//                if (response.getStatusCode().is2xxSuccessful()) {
+//                    log.info("Shipment created successfully in BigCommerce for order_id={}", orderId);
+//                } else {
+//                    log.error("Failed to create shipment: HTTP {} - {}", response.getStatusCode(), response.getBody());
+//                }
+// 
+//            } catch (Exception e) {
+//                log.error("Error creating shipment in BigCommerce: {}", e.getMessage(), e);
+//            }
+//        }
+    private void postShipmentToBigCommerce(String storeHash, int orderId, List<OCBCOrderProductTableTransaction> orderProducts) {
+        try {
+            String accessToken = "8tu4fs23u4456nj2jrexvz02mu0nkq5";
+
+            // ✅ Step 1: Fetch order products from BigCommerce
+            ResponseEntity<String> productsResponse = shipmentFeignClient.getOrderProducts(storeHash, orderId, accessToken);
+            if (!productsResponse.getStatusCode().is2xxSuccessful()) {
+                log.error("Failed to fetch order products from BigCommerce: {}", productsResponse.getBody());
+                return;
+            }
+
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode productArray = mapper.readTree(productsResponse.getBody());
+
+            if (!productArray.isArray()) {
+                log.error("Invalid format: expected array of products");
+                return;
+            }
+
+            List<Map<String, Object>> items = new ArrayList<>();
+
+            for (OCBCOrderProductTableTransaction localProduct : orderProducts) {
+                String localSku = localProduct.getSku();
+                int quantity = localProduct.getQuantity();
+
+                boolean matchFound = false;
+
+                for (JsonNode productNode : productArray) {
+                    String productSku = productNode.path("sku").asText();
+                    int orderProductId = productNode.path("id").asInt();
+
+                    if (localSku.equalsIgnoreCase(productSku)) {
+                        Map<String, Object> item = Map.of(
+                            "order_product_id", orderProductId,
+                            "quantity", quantity
+                        );
+                        items.add(item);
+                        matchFound = true;
+                        break;
+                    }
+                }
+
+                if (!matchFound) {
+                    log.error("Could not find matching SKU '{}' in BigCommerce order #{}", localSku, orderId);
+                    return;
+                }
+            }
+
+            // ✅ Step 2: Create shipment payload
+            Map<String, Object> payload = Map.of(
+                "items", items,
+                "tracking_number", "TRACK-" + orderId,
+                "shipping_provider", " ",//manual entry
+                "tracking_carrier", "",//custom
+                "comments", "Shipment created via integration"
+            );
+
+            log.info("Sending shipment request for order_id={} with payload: {}", orderId, payload);
+
+            ResponseEntity<String> response = shipmentFeignClient.createShipment(storeHash, orderId, accessToken, payload);
+
+            if (response.getStatusCode().is2xxSuccessful()) {
+                log.info("✅ Shipment created successfully for order_id={}", orderId);
+            } else {
+                log.error("❌ Failed to create shipment: HTTP {} - {}", response.getStatusCode(), response.getBody());
+            }
+
+        } catch (Exception e) {
+            log.error("Exception while creating shipment: {}", e.getMessage(), e);
+        }
+    }
+
+    
+}

@@ -1,0 +1,56 @@
+package com.arizon.racetrac.restclient;
+
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.RequestHeader;
+import java.util.Map;
+
+@FeignClient(name = "ShipmentFeignClient", url = "https://api.bigcommerce.com/stores")
+public interface ShipmentFeignClient {
+             
+	@PostMapping(value = "/{storeHash}/v2/orders/{orderId}/shipments", consumes = MediaType.APPLICATION_JSON_VALUE)
+    ResponseEntity<String> createShipment(
+            @PathVariable("storeHash") String storeHash,
+            @PathVariable("orderId") int orderId,
+            @RequestHeader("X-Auth-Token") String accessToken,
+            @RequestBody Map<String, Object> shipmentPayload
+    );
+
+    @GetMapping("/{storeHash}/v2/orders/{orderId}")
+    ResponseEntity<String> getOrderDetails(
+            @PathVariable("storeHash") String storeHash,
+            @PathVariable("orderId") int orderId,
+            @RequestHeader("X-Auth-Token") String accessToken
+    );
+
+    @GetMapping(value ="/{storeHash}/v2/orders/{orderId}/products",produces = "application/json")
+            ResponseEntity<String> getOrderProducts(
+            @PathVariable("storeHash") String storeHash,
+            @PathVariable("orderId") int orderId,
+            @RequestHeader("X-Auth-Token") String accessToken
+    );
+
+    @GetMapping(value = "/{storeHash}/v2/orders/{orderId}/shipping_addresses",
+            produces = "application/json")  
+            ResponseEntity<String> getOrderShippingAddresses(
+            @PathVariable("storeHash") String storeHash,
+            @PathVariable("orderId") int orderId,
+            @RequestHeader("X-Auth-Token") String accessToken
+    );
+
+    @PutMapping("/{storeHash}/v2/orders/{orderId}")
+    ResponseEntity<String> updateOrderStatus(
+            @PathVariable("storeHash") String storeHash,
+            @PathVariable("orderId") int orderId,
+            @RequestHeader("X-Auth-Token") String accessToken,
+            @RequestBody Map<String, Object> payload
+    );
+
+
+}

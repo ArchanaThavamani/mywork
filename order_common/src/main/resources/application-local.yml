@@ -1,0 +1,52 @@
+spring:
+  jpa:
+    open-in-view : false
+    hibernate:
+      ddl-auto: none
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.PhysicalNamingStrategyStandardImpl
+    properties:
+      dialect: org.hibernate.dialect.PostgreSQL81Dialect
+    show-sql: true
+  datasource:
+     url: jdbc:postgresql://52.1.232.139:5432/mac_mod_dev?useSSL=false&requireSSL=false
+     username: macmodusr
+     password: M0diCakil7ler!)
+#    
+
+#  mail:
+#      host: email-smtp.us-east-1.amazonaws.com
+#      port: 587
+#      username: AKIAVWU6DFCZ5APUHA6N
+#      password: BJ+nrI/YcuWzv32LBZ3d8FukeUby3cNNDFs9VAua14kj
+      
+mail:
+    host: email-smtp.us-east-1.amazonaws.com
+    port: 587
+    properties:
+      mail:
+        transport:
+          protocol: smtp
+        smtp:
+          port: 587
+          auth: true
+          starttls:
+            enble: true
+            required: true
+            
+server:
+  port: 8080
+  
+
+
+  
+  
+commonconfig:
+    period: 1500
+    max_period: 6000
+    max_attempts: 2
+    timeout_period: 20000
+    bcStoreHash: 51ucr5ts3p
+    bc_base_url: https://api.bigcommerce.com/stores/
+    bcAccessToken: 8f801wmhvalkg77u549mzxmmjc1fuds
+            

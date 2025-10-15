@@ -1,0 +1,23 @@
+package com.arizon.racetrac.restclient;
+
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+
+import com.arizon.racetrac.config.AuthClientConfig;
+
+
+@FeignClient(name="workdayrestclient",url="https://api.jdadelivers.com",configuration = AuthClientConfig.class)
+public interface SalesOrderRestClientpost_OrderService {
+
+ 
+	@GetMapping("/dp/interactive/orderReleases/v1")
+	ResponseEntity<String> postorder(
+			 @RequestHeader("Authorization")String authorization,
+			 @RequestBody String transformResponse
+			 );
+	
+
+}

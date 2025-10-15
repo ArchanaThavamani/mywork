@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta http-equiv="X-UA-Compatible" content="ie=edge"/>
+    <title>Sample Email</title>
+
+    <style>
+        table, th, td {
+            border: 1px solid black;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 5px;
+        }
+        th {
+            text-align: left;
+        }
+    </style>
+
+</head>
+<body>
+<h1 th:text="${errorHeader}"></h1>
+
+<h6>Transaction Details</h6>
+
+<table>
+    <tr>
+        <th>Type</th>
+        <th>Provider</th>
+        <th>Order Number</th>
+        <th>Fulfillment Id</th>
+        <th>Timestamp</th>
+        <th>Control Number</th>
+        <th>File Name</th>
+        <th>Status</th>
+        <th>Ack Status</th>
+    </tr>
+    <th:block th:each="item : ${items}">
+        <tr>
+            <td th:text="${item.type}"></td>
+            <td th:text="${item.provider}"></td>
+            <td th:text="${item.orderNumber}"></td>
+            <td th:text="${item.fulfillmentId}"></td>
+            <td th:text="${item.createTs}"></td>
+            <td th:text="${item.cntlNumber}"></td>
+            <td th:text="${item.targetFileName}"></td>
+            <td th:text="${item.status}"></td>
+            <td th:text="${item.ackStatus}"></td>
+        </tr>
+    </th:block>
+</table>
+
+</body>
+</html>

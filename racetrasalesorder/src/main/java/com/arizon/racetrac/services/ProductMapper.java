@@ -1,0 +1,53 @@
+package com.arizon.racetrac.services;
+
+import java.math.BigDecimal;
+import java.math.BigInteger;
+
+import com.arizon.productcommon.config.PCConstants;
+//import com.arizon.productcommon.entity.PCProductCustomFeildTransaction;
+import com.arizon.productcommon.entity.PCProductTransaction;
+import com.arizon.racetrac.model.PurchaseItemData;
+
+public class ProductMapper {
+
+//    public static PCProductTransaction toEntity(PurchaseItemData productData) {
+//        return PCProductTransaction.builder()
+//                .name(productData.getItemName())
+//                .type("physical")
+//                .price(productData.getUnitPrice() != null
+//                        ? new BigDecimal(productData.getUnitPrice().getValue())
+//                        : BigDecimal.ZERO)
+//                .weight(1)
+//                .sku(productData.getItemIdentifier())
+//                .description(productData.getItemDescription())
+//                .inventoryTracking("product")
+//                .isVisible(productData.getPurchaseItemStatus() != null
+//                        && "Active".equalsIgnoreCase(productData.getPurchaseItemStatus().getDescriptor()))
+//                .storehash(PCConstants.secrets.getStorehash())
+//                .productStatus("Pending")
+//                .build();
+//    }
+
+    public static PCProductTransaction updateEntity(PCProductTransaction existing, PurchaseItemData productData) {
+        existing.setName(productData.getItemName());
+        existing.setPrice(productData.getUnitPrice() != null
+                ? new BigDecimal(productData.getUnitPrice().getValue())
+                : BigDecimal.ZERO);
+        existing.setDescription(productData.getItemDescription());
+        existing.setVisible(productData.getPurchaseItemStatus() != null
+                && "Active".equalsIgnoreCase(productData.getPurchaseItemStatus().getDescriptor()));
+        existing.setProductStatus("Pending");
+        existing.setActive(true);
+        return existing;
+    }
+
+//    public static PCProductCustomFeildTransaction toCustomField(PurchaseItemData productData, Integer productId) {
+//        return PCProductCustomFeildTransaction.builder()
+//                .productId(BigInteger.valueOf(productId))
+//                .name("spendCategoryForItem")
+//                .value(productData.getSpendCategoryForItem().getDescriptor())
+//                .status(PCConstants.PENDING)
+//                .isActive(true)
+//                .build();
+//    }
+}

@@ -1,0 +1,447 @@
+package com.arizon.racetrac.services;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
+import java.util.Vector;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+
+import com.arizon.ordercommons.entity.OCBCOrderProductTableTransaction;
+import com.arizon.ordercommons.entity.OCBCOrderTableTransaction;
+import com.arizon.ordercommons.repository.OCBCOrderProductTransactionRepository;
+import com.arizon.ordercommons.repository.OCBCOrderTransactionRepository;
+import com.arizon.racetrac.restclient.ShipmentFeignClient;
+import com.jcraft.jsch.ChannelSftp;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.Session;
+
+@Service
+public class RacetracShipmentService {
+
+    private static final Logger log = LoggerFactory.getLogger(RacetracShipmentService.class);
+
+    @Autowired
+    private OCBCOrderTransactionRepository ocbcOrderTransactionRepository;
+
+    @Autowired
+    private OCBCOrderProductTransactionRepository ocbcOrderProductTransactionRepository;
+
+    @Autowired
+    private ShipmentFeignClient shipmentFeignClient;
+
+    // SFTP Credentials
+    private final String host = "sftp.racetrac.com";
+    private final int port = 22;
+    private final String user = "strtsftpprodeastus001.wdoutboundint.wdoutboundint";
+    private final String password = "WH6tS6qy61hq+TK0gTi1KZwPy7L3Q4XI";
+    private final String remoteDir = "/SupplyChain/WDtoOmniPortal_Outbound/Shipments/";
+
+    // Entry point
+    public void integrateShipmentsDetails() {
+        Session session = null;
+        ChannelSftp channelSftp = null;
+
+        try {
+            session = setupSftpSession();
+            channelSftp = (ChannelSftp) session.openChannel("sftp");
+            channelSftp.connect();
+            log.info("SFTP Channel connected successfully.");
+
+            channelSftp.cd(remoteDir);
+            Vector<ChannelSftp.LsEntry> files = channelSftp.ls("*.json");
+
+            if (files.isEmpty()) {
+                log.info("No JSON files found in {}", remoteDir);
+                return;
+            }
+
+            for (ChannelSftp.LsEntry entry : files) {
+                String fileName = entry.getFilename();
+                log.info("Processing file: {}", fileName);
+                String jsonContent = readFileFromSftp(channelSftp, fileName);
+
+                processShipmentJson(jsonContent);
+            }
+
+        } catch (Exception e) {
+            log.error("Error processing SFTP files: {}", e.getMessage(), e);
+        } finally {
+            disconnect(channelSftp, session);
+        }
+    }
+
+    // --- SFTP Helper Methods ---
+    private Session setupSftpSession() throws Exception {
+        JSch jsch = new JSch();
+        Session session = jsch.getSession(user, host, port);
+        session.setPassword(password);
+        Properties config = new Properties();
+        config.put("StrictHostKeyChecking", "no");
+        session.setConfig(config);
+        log.info("Connecting to SFTP server: {}", host);
+        session.connect();
+        log.info("SFTP Session connected successfully.");
+        return session;
+    }
+
+    private String readFileFromSftp(ChannelSftp channelSftp, String fileName) throws Exception {
+        try (InputStream inputStream = channelSftp.get(fileName);
+             BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
+
+            StringBuilder jsonContent = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                jsonContent.append(line);
+            }
+            return jsonContent.toString();
+        }
+    }
+
+    private void disconnect(ChannelSftp channelSftp, Session session) {
+        if (channelSftp != null && channelSftp.isConnected()) {
+            channelSftp.disconnect();
+            log.info("SFTP Channel disconnected.");
+        }
+        if (session != null && session.isConnected()) {
+            session.disconnect();
+            log.info("SFTP Session disconnected.");
+        }
+    }
+
+    // --- Shipment Processing ---
+    private void processShipmentJson(String jsonContent) {
+        JSONObject json = new JSONObject(jsonContent);
+        JSONObject despatchAdvice = json.getJSONArray("despatchAdvice").getJSONObject(0);
+
+        // Step 1: Extract order info
+        String customerReference = despatchAdvice.getString("customerReference"); // e.g., STOCK-058540
+        int sourceOrderId = Integer.parseInt(customerReference.split("-")[1]);
+        String storehash = "cr0kczybyx";
+
+        log.info("Extracted source_order_id from JSON: {}", sourceOrderId);
+
+        // Step 2: Query tbl_order
+        Optional<OCBCOrderTableTransaction> orderOpt =
+                ocbcOrderTransactionRepository.findByStorehashAndSourceOrderId(storehash, sourceOrderId);
+
+        if (orderOpt.isEmpty()) {
+            log.warn("Order not found for storehash={} and source_order_id={}", storehash, sourceOrderId);
+            return;
+        }
+
+        OCBCOrderTableTransaction order = orderOpt.get();
+        int pkOrderId = order.getOrderId();
+        log.info("Order found: order_id={} source_order_id={}", pkOrderId, sourceOrderId);
+
+        // Step 3: Fetch all products for this orderId from DB
+        List<OCBCOrderProductTableTransaction> orderProducts =
+                ocbcOrderProductTransactionRepository.findByorderId(pkOrderId);
+
+        if (orderProducts == null || orderProducts.isEmpty()) {
+            log.warn("No products found in tbl_order_product for order_id={}", sourceOrderId);
+            return;
+        }
+
+        // Step 4: Validate shipment line items
+        JSONObject shipment = despatchAdvice.getJSONObject("shipment");
+        if (!shipment.has("lineItem")) {
+            log.warn("No line items found in shipment for order_id={}", sourceOrderId);
+            return;
+        }
+
+        JSONArray lineItems = shipment.getJSONArray("lineItem");
+        for (int i = 0; i < lineItems.length(); i++) {
+            JSONObject lineItem = lineItems.getJSONObject(i);
+
+            String shipmentLineItemId = lineItem.getString("shipmentLineItemId");
+            String sku = shipmentLineItemId.contains(":") ? shipmentLineItemId.split(":")[1] : shipmentLineItemId;
+            int requestedQty = lineItem.getJSONObject("requestedQuantity").getInt("value");
+
+            Optional<OCBCOrderProductTableTransaction> matchedProduct =
+                    orderProducts.stream()
+                                 .filter(p -> p.getSku().equalsIgnoreCase(sku))
+                                 .findFirst();
+
+            if (matchedProduct.isEmpty()) {
+                log.error("SKU {} not found for order_id={}", sku, sourceOrderId);
+                return; // stop processing
+            }
+
+            int dbQty = matchedProduct.get().getQuantity();
+            if (requestedQty != dbQty) {
+                log.error("Quantity mismatch for SKU {}: expected={} got={}", sku, dbQty, requestedQty);
+                return; // stop processing
+            }
+
+            log.info("Validated line item: SKU={} Quantity={}", sku, requestedQty);
+        }
+
+        log.info("All line items validated successfully for order_id={}", sourceOrderId);
+
+        // Step 5: Post shipment to BigCommerce
+        postShipmentToBigCommerce(storehash, sourceOrderId, orderProducts);
+
+        //Step 6 : Changing the status in BC
+        markOrderCompleted(storehash, sourceOrderId);
+    }
+
+// --- BigCommerce Shipment ---
+private void postShipmentToBigCommerce(String storeHash, int orderId, List<OCBCOrderProductTableTransaction> orderProducts) {
+    String accessToken = "8tu4fs23u4456nj2jrexvz02mu0nkq5";
+
+    try {
+        // 1️⃣ Fetch Shipping Addresses
+        ResponseEntity<String> addressResponse = shipmentFeignClient.getOrderShippingAddresses(storeHash, orderId, accessToken);
+        String addressBody = addressResponse.getBody();
+
+        if (addressBody == null || addressBody.isEmpty()) {
+            log.error("Empty response for shipping addresses of order_id={}", orderId);
+            return;
+        }
+
+        JSONArray shippingAddresses;
+        Object addrJson = new org.json.JSONTokener(addressBody).nextValue();
+
+        if (addrJson instanceof JSONArray) {
+            shippingAddresses = (JSONArray) addrJson;
+        } else if (addrJson instanceof JSONObject) {
+            JSONObject obj = (JSONObject) addrJson;
+            if (obj.has("data") && obj.get("data") instanceof JSONArray) {
+                shippingAddresses = obj.getJSONArray("data");
+            } else {
+                shippingAddresses = new JSONArray().put(obj);
+            }
+        } else {
+            log.error("Unexpected shipping addresses format: {}", addressBody);
+            return;
+        }
+
+        if (shippingAddresses.isEmpty()) {
+            log.error("No shipping addresses found for order_id={} in BigCommerce.", orderId);
+            return;
+        }
+
+        int orderAddressId = shippingAddresses.getJSONObject(0).getInt("id");
+        log.info("Fetched order_address_id={} for order_id={}", orderId, orderAddressId);
+
+        // 2️⃣ Fetch Order Products
+        ResponseEntity<String> bcOrderProductsResponse = shipmentFeignClient.getOrderProducts(storeHash, orderId, accessToken);
+        String bcBody = bcOrderProductsResponse.getBody();
+
+        if (bcBody == null || bcBody.isEmpty()) {
+            log.error("Empty response for order products of order_id={}", orderId);
+            return;
+        }
+
+        JSONArray bcOrderProducts;
+        Object bcJson = new org.json.JSONTokener(bcBody).nextValue();
+
+        if (bcJson instanceof JSONArray) {
+            bcOrderProducts = (JSONArray) bcJson;
+        } else if (bcJson instanceof JSONObject) {
+            JSONObject obj = (JSONObject) bcJson;
+            if (obj.has("data") && obj.get("data") instanceof JSONArray) {
+                bcOrderProducts = obj.getJSONArray("data");
+            } else {
+                bcOrderProducts = new JSONArray().put(obj);
+            }
+        } else {
+            log.error("Unexpected order products format: {}", bcBody);
+            return;
+        }
+
+        // 3️⃣ Map DB products to BC order products
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (OCBCOrderProductTableTransaction product : orderProducts) {
+            Optional<JSONObject> matched = bcOrderProducts.toList().stream()
+                    .map(o -> new JSONObject((Map<?, ?>) o))
+                    .filter(j -> j.getString("sku").equalsIgnoreCase(product.getSku()))
+                    .findFirst();
+
+            if (matched.isEmpty()) {
+                log.error("SKU {} not found in BigCommerce order {}", product.getSku(), orderId);
+                return; // stop processing
+            }
+
+            Map<String, Object> item = Map.of(
+                    "order_product_id", matched.get().getInt("id"),
+                    "quantity", product.getQuantity()
+            );
+            items.add(item);
+        }
+
+        // 4️⃣ Build shipment payload
+        Map<String, Object> shipmentPayload = Map.of(
+                "order_address_id", orderAddressId,
+                "items", items,
+                "tracking_number", "TRACK-" + orderId,
+                "shipping_provider", "",  // optional
+                "tracking_carrier", "",   // optional
+                "comments", "Shipment created via integration"
+        );
+
+        // 5️⃣ Create Shipment
+        ResponseEntity<String> shipmentResponse =
+                shipmentFeignClient.createShipment(storeHash, orderId, accessToken, shipmentPayload);
+
+        if (shipmentResponse.getStatusCode().is2xxSuccessful()) {
+            log.info(" Shipment created successfully in BigCommerce for order_id={}", orderId);
+
+            // 6️⃣ Mark order completed in BC and DB
+            markOrderCompleted(storeHash, orderId);
+
+        } else {
+            log.error(" Failed to create shipment for order_id={}: HTTP {} - {}",
+                    orderId, shipmentResponse.getStatusCode(), shipmentResponse.getBody());
+        }
+
+    } catch (Exception e) {
+        log.error("Error creating shipment in BigCommerce for order_id={}: {}", orderId, e.getMessage(), e);
+    }
+}
+
+
+public void markOrderCompleted(String storeHash, int orderId) {
+    try {
+        log.info("Started");
+        String accessToken = "8tu4fs23u4456nj2jrexvz02mu0nkq5";
+        Map<String, Object> payload = Map.of("status_id", 10); 
+
+        // Update BigCommerce order status
+        ResponseEntity<String> response =
+                shipmentFeignClient.updateOrderStatus(storeHash, orderId, accessToken, payload);
+        log.info("Response : "+response);
+
+        if (response.getStatusCode().is2xxSuccessful()) {
+            log.info("Order {} marked as Completed in BigCommerce", orderId);
+
+        Optional<OCBCOrderTableTransaction> optionalOrder =
+                ocbcOrderTransactionRepository.findByStorehashAndSourceOrderId(storeHash, orderId);
+
+        if (optionalOrder.isPresent()) {
+            OCBCOrderTableTransaction order = optionalOrder.get();
+            order.setOrderStatus("Completed");
+            ocbcOrderTransactionRepository.save(order);
+            log.info("Order {} status updated to COMPLETED", orderId);
+        } else {
+            log.warn("Order with storeHash {} and sourceOrderId {} not found", storeHash, orderId);
+        }
+
+        } else {
+            log.error("Failed to update BigCommerce order status for order {}. HTTP {} - {}",
+                    orderId, response.getStatusCode(), response.getBody());
+        }
+
+    } catch (Exception e) {
+        log.error("Error updating order status for order {}: {}", orderId, e.getMessage(), e);
+    }
+}
+
+
+
+         //List Orders Processing
+
+   private void processShipmentJson(String jsonContent) {
+    JSONObject json = new JSONObject(jsonContent);
+
+    if (!json.has("despatchAdvice")) {
+        log.warn("No despatchAdvice found in shipment file");
+        return;
+    }
+
+    JSONArray despatchAdvices = json.getJSONArray("despatchAdvice");
+
+    for (int i = 0; i < despatchAdvices.length(); i++) {
+        try {
+            JSONObject despatchAdvice = despatchAdvices.getJSONObject(i);
+            processSingleDespatchAdvice(despatchAdvice);
+        } catch (Exception e) {
+            log.error("Error processing despatchAdvice at index {}: {}", i, e.getMessage(), e);
+            // continue with next
+        }
+    }
+    
+    private void processSingleDespatchAdvice(JSONObject despatchAdvice) {
+        String customerReference = despatchAdvice.getString("customerReference"); // e.g., STOCK-058540
+        int sourceOrderId = Integer.parseInt(customerReference.split("-")[1]);
+        String storehash = "cr0kczybyx";
+
+        log.info("Processing order: source_order_id={}", sourceOrderId);
+
+        // Fetch order
+        Optional<OCBCOrderTableTransaction> orderOpt =
+                ocbcOrderTransactionRepository.findByStorehashAndSourceOrderId(storehash, sourceOrderId);
+
+        if (orderOpt.isEmpty()) {
+            log.warn("Order not found for storehash={} and source_order_id={}", storehash, sourceOrderId);
+            return;
+        }
+
+        OCBCOrderTableTransaction order = orderOpt.get();
+        int pkOrderId = order.getOrderId();
+        log.info("Order found: order_id={} source_order_id={}", pkOrderId, sourceOrderId);
+
+        List<OCBCOrderProductTableTransaction> orderProducts =
+                ocbcOrderProductTransactionRepository.findByorderId(pkOrderId);
+
+        if (orderProducts == null || orderProducts.isEmpty()) {
+            log.warn("No products found in tbl_order_product for order_id={}", sourceOrderId);
+            return;
+        }
+
+        JSONObject shipment = despatchAdvice.getJSONObject("shipment");
+        if (!shipment.has("lineItem")) {
+            log.warn("No line items found in shipment for order_id={}", sourceOrderId);
+            return;
+        }
+
+        JSONArray lineItems = shipment.getJSONArray("lineItem");
+        for (int i = 0; i < lineItems.length(); i++) {
+            JSONObject lineItem = lineItems.getJSONObject(i);
+
+            String shipmentLineItemId = lineItem.getString("shipmentLineItemId");
+            String sku = shipmentLineItemId.contains(":") ? shipmentLineItemId.split(":")[1] : shipmentLineItemId;
+            int requestedQty = lineItem.getJSONObject("requestedQuantity").getInt("value");
+
+            Optional<OCBCOrderProductTableTransaction> matchedProduct =
+                    orderProducts.stream()
+                                 .filter(p -> p.getSku().equalsIgnoreCase(sku))
+                                 .findFirst();
+
+            if (matchedProduct.isEmpty()) {
+                log.error("SKU {} not found for order_id={}", sku, sourceOrderId);
+                return; // stop processing this order
+            }
+
+            int dbQty = matchedProduct.get().getQuantity();
+            if (requestedQty != dbQty) {
+                log.error("Quantity mismatch for SKU {}: expected={} got={}", sku, dbQty, requestedQty);
+                return; // stop processing this order
+            }
+
+            log.info("Validated line item: SKU={} Quantity={}", sku, requestedQty);
+        }
+
+        log.info("All line items validated successfully for order_id={}", sourceOrderId);
+
+        // Post shipment and mark completed
+        postShipmentToBigCommerce(storehash, sourceOrderId, orderProducts);
+        markOrderCompleted(storehash, sourceOrderId);
+    }
+
+//}
+
+
+}

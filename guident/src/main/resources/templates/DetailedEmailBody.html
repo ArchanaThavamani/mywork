@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta http-equiv="X-UA-Compatible" content="ie=edge"/>
+    <title>Sample Email</title>
+
+    <style>
+        table, th, td {
+            border: 1px solid black;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 5px;
+        }
+        th {
+            text-align: left;
+        }
+    </style>
+
+</head>
+<body>
+<h1 th:text="${errorHeader}"></h1>
+<table>
+    <tr>
+        <th>Type</th>
+        <td th:text="${type}"></td>
+    </tr>
+    <tr>
+        <th>Order Number</th>
+        <td th:text="${orderNumber}"></td>
+    </tr>
+    <tr>
+        <th>Fulfillment Id</th>
+        <td th:text="${fulfillmentId}"></td>
+    </tr>
+    <tr>
+        <th>3PL Order Id</th>
+        <td th:text="${threeplOrderId}"></td>
+    </tr>
+    <tr>
+        <th>Shipment Number</th>
+        <td th:text="${shipmentNumber}"></td>
+    </tr>
+    <tr>
+        <th>Container Number</th>
+        <td th:text="${containerNumber}"></td>
+    </tr>
+    <tr>
+        <th>Inbound Shipment ID</th>
+        <td th:text="${inbShipmentId}"></td>
+    </tr>
+    <tr>
+        <th>Invoice Number</th>
+        <td th:text="${invoiceNumber}"></td>
+    </tr>
+    <tr>
+        <th>Invoice Amount</th>
+        <td th:text="${invoiceAmount}"></td>
+    </tr>
+    <tr>
+        <th>MessageId</th>
+        <td th:text="${messageId}"></td>
+    </tr>
+    <tr>
+        <th>Control Number</th>
+        <td th:text="${controlNumber}"></td>
+    </tr>
+    <tr>
+        <th>Source FileName</th>
+        <td th:text="${sourceFileName}"></td>
+    </tr>
+    <tr>
+        <th>Target FileName</th>
+        <td th:text="${targetFileName}"></td>
+    </tr>
+    <tr>
+        <th>Timestamp</th>
+        <td th:text="${currentTime}"></td>
+    </tr>
+    <tr>
+        <th>Error Details</th>
+        <td th:text="${errorDetails}"></td>
+    </tr>
+</table>
+
+<h6>Order Details</h6>
+
+<table>
+    <tr>
+        <th>Line Number</th>
+        <th>SKU</th>
+        <th>Quantity</th>
+        <th>UOM</th>
+        <th>Description</th>
+        <th>Tracking Number</th>
+        <th>Price</th>
+    </tr>
+    <th:block th:each="item : ${items}">
+        <tr>
+            <td th:text="${item.lineNumber}"></td>
+            <td th:text="${item.sku}"></td>
+            <td th:text="${item.quantity}"></td>
+            <td th:text="${item.uom}"></td>
+            <td th:text="${item.description}"></td>
+            <td th:text="${item.trackingNumber}"></td>
+            <td th:text="${item.price}"></td>
+        </tr>
+    </th:block>
+</table>
+
+</body>
+</html>

@@ -1,0 +1,56 @@
+package com.arizon.racetrac.services;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+
+import com.arizon.racetrac.config.RacetracConstant;
+import com.arizon.racetrac.model.Racetrac_TokenResponse;
+import com.arizon.racetrac.restclient.SalesOrderRestClient;
+import com.arizon.racetrac.restclient.SalesOrderRestClientpost_OrderService;
+
+public class SalesOrderRestServices {
+    private static final Logger log = LoggerFactory.getLogger(SalesOrderRestServices.class);
+
+
+	@Autowired
+	SalesOrderRestClientpost_OrderService workdayrestclient;
+	
+	@Autowired
+	SalesOrderRestClient workdayaccesstokenrestclient;
+	
+	
+	public  String postSalesOrders(String transformResponse, Integer sourceOrderId, Integer orderId) {
+		String access_token = getAccessToken();
+		System.out.println("Racetrac Sales Orders Token Successfully Generated : \n" + access_token);
+		String authorization = "Bearer " + access_token;
+		ResponseEntity<String> postResponse=workdayrestclient.postorder(authorization,transformResponse);
+		log.info("Order is created successfully:"+postResponse.getBody());
+		return "successfully created";
+	}
+
+	private  String getAccessToken() {
+		try {
+		 Map<String, String> form = new HashMap<>();
+         form.put("client_id", RacetracConstant.client_id);
+         form.put("client_secret", RacetracConstant.client_secret);
+         form.put("grant_type",RacetracConstant.grant_type );
+         form.put("scope",RacetracConstant.scope );
+         Racetrac_TokenResponse response= workdayaccesstokenrestclient.getAccessToken("application/json",form);
+         log.info(" get access Token - "+response.getAccess_token());
+         return response.getAccess_token();
+		}
+		catch (Exception e) {
+	           throw new RuntimeException("Error while getting SAP Bearer Token: " + e.getMessage(), e);
+	      }
+        
+
+
+		
+	}
+
+}

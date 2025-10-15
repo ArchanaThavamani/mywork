@@ -1,0 +1,5 @@
+package com.arizon.racetrac.restclient;
+
+public interface ShipmentFeignClient {
+
+}

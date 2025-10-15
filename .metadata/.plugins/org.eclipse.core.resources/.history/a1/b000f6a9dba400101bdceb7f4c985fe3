@@ -1,0 +1,23 @@
+package com.arizon.racetrac.config;
+
+import lombok.Data;
+
+@Data
+public class RacetracSalesOrderConstant 
+{
+	
+	public static final String orderSubType="C";
+	public static final String documentStatusCode="ORIGINAL";
+	public static final String documentActionCode="ADD";
+	public static final String tmCustomerCode="RTD";
+	public static final String orderLinePriority="2";
+	public static final String isSaturdayDeliveryAllowed="true";
+	public static final String shipmentSplitMethod="NO_SPLIT";
+	public static final String value="00000000000000";
+	public static final String typeCode="BUYER_ASSIGNED";
+	public static final String isCaseSplittingAllowed="true";
+	public static final String beginTime="00:01:00.000";
+	public static final String beginTime="00:01:00.000";
+	
+
+}

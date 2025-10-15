@@ -1,0 +1,27 @@
+version: 0.2
+phases:
+  install:
+    runtime-versions:
+      java: corretto21
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - aws ecr get-login-password --region us-east-1| docker login --username AWS --password-stdin 174285615875.dkr.ecr.us-east-1.amazonaws.com
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=${COMMIT_HASH:=latest}
+      - URI=174285615875.dkr.ecr.us-east-1.amazonaws.com/guidant-dev:$IMAGE_TAG
+      - echo $URI
+      - echo configure code artifact repository token
+      - export CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain arizon-digital --domain-owner 392247322803 --region us-east-1 --query authorizationToken --output text`
+      - cp CICD_Config/settings.xml ~/.m2/settings.xml
+  build:
+    commands:
+      - echo Build started on `date`
+      - mvn clean install -Dmaven.test.skip=true
+      - docker build -t $URI .
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker images....
+      - docker push $URI
